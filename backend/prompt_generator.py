@@ -1,8 +1,6 @@
 import os
 import json
-import math
 import re
-from typing import Optional
 
 
 def split_script_into_scenes(script: str, total_duration: float) -> list[dict]:
@@ -46,12 +44,29 @@ def split_script_into_scenes(script: str, total_duration: float) -> list[dict]:
             "duration": duration,
         })
 
+    # Merge scenes if there are too many to fit the audio duration
+    # Each scene needs at least 1.0s (to allow 0.5s fade_duration in FFmpeg)
+    min_scene_duration = 1.0
+    while len(result) > 1 and total_duration / len(result) < min_scene_duration:
+        last = result.pop()
+        result[-1]["text"] = f"{result[-1]['text']} {last['text']}"
+
+    # Recalculate durations after potential merging
+    if len(result) > 1:
+        total_words = sum(len(s["text"].split()) for s in result)
+        for i, s in enumerate(result):
+            s["scene_id"] = i + 1
+            s["image"] = f"scene_{i + 1:02d}.png"
+            word_count = len(s["text"].split())
+            proportion = word_count / total_words if total_words > 0 else 1.0 / len(result)
+            s["duration"] = round(max(proportion * total_duration, min_scene_duration), 2)
+
     # Adjust durations to match total audio length
     current_total = sum(s["duration"] for s in result)
     if current_total > 0 and abs(current_total - total_duration) > 0.1:
         ratio = total_duration / current_total
         for s in result:
-            s["duration"] = round(s["duration"] * ratio, 2)
+            s["duration"] = round(max(s["duration"] * ratio, min_scene_duration), 2)
 
     return result
 

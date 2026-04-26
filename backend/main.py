@@ -1,8 +1,6 @@
-import os
 import json
+import shlex
 import subprocess
-import math
-import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -301,7 +299,7 @@ def render_video():
     for i, p in enumerate(prompts):
         img_path = IMAGES_DIR / p["image"]
         duration = p["duration"]
-        inputs.append(f"-loop 1 -t {duration} -i {img_path}")
+        inputs.append(f"-loop 1 -t {duration} -i {shlex.quote(str(img_path))}")
 
     # Build complex filter for fade transitions
     fade_duration = 0.5
@@ -340,14 +338,14 @@ def render_video():
 
     cmd = (
         f"ffmpeg -y {input_args} "
-        f"-i {audio_path} "
+        f"-i {shlex.quote(str(audio_path))} "
         f'-filter_complex "{filter_complex}" '
         f"-map [outv] -map {n}:a "
         f"-c:v libx264 -preset medium -crf 23 "
         f"-c:a aac -b:a 192k "
         f"-shortest "
         f"-movflags +faststart "
-        f"{output_path}"
+        f"{shlex.quote(str(output_path))}"
     )
 
     try:
@@ -379,7 +377,9 @@ def get_video():
 
 @app.get("/api/images/{filename}")
 def get_image(filename: str):
-    image_path = IMAGES_DIR / filename
+    image_path = (IMAGES_DIR / filename).resolve()
+    if not image_path.is_relative_to(IMAGES_DIR.resolve()):
+        raise HTTPException(status_code=400, detail="Invalid filename.")
     if not image_path.exists():
         raise HTTPException(status_code=404, detail="Image not found.")
     return FileResponse(str(image_path))
